@@ -30,7 +30,7 @@ def reduce_node_dict(acc: Dict, act: Dict) -> Dict:
     if 'level' in act.keys():
         if 'level' not in acc.keys():
             acc['level'] = set()
-            acc['level'] = acc['level'] | act['level']
+        acc['level'] = acc['level'] | act['level']
     return acc
 
 
@@ -154,7 +154,7 @@ processed_edges = edge_subject.pipe(
         [str(v) for k, v in dic.items() if k not in ['level', 'type']])),
     op.map(lambda o: general_edge_grouper(o)),
     op.merge_all(),
-    op.buffer_with_count(100),
+    op.buffer_with_count(1000),
     op.map(lambda dict_list: save_edges_in_db(dict_list)),
     op.buffer_with_count(5),
     op.map(lambda futures: perform_futures(futures)),
@@ -167,7 +167,7 @@ processed_nodes = node_subject.pipe(
         [str(v) for k, v in dic.items() if k not in ['level']])),
     op.map(lambda o: general_node_grouper(o)),
     op.merge_all(),
-    op.buffer_with_count(600),
+    op.buffer_with_count(5000),
     op.map(lambda dict_list: save_nodes_in_db(dict_list)),
     op.buffer_with_count(5),
     op.map(lambda futures: perform_futures(futures)),
