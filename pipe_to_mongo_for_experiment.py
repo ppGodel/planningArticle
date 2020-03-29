@@ -36,7 +36,10 @@ def reduce_node_dict(acc: Dict, act: Dict) -> Dict:
 def edge_dict_to_edge_dict_with_list(act: Dict) -> Dict:
     xform = {k: v for k, v in act.items()}
     if 'level' in act.keys():
-        xform['level'] = {k: sorted(list(v)) for k, v in xform['level'].items()}
+        xform['level'] = {
+            k: sorted(list(v))
+            for k, v in xform['level'].items()
+        }
     return xform
 
 
@@ -74,7 +77,7 @@ def raw_edge_dict_to_formatted_edge_dict(dic: Dict):
     return xform
 
 
-def exists(dic: Dict)-> bool:
+def exists(dic: Dict) -> bool:
     value = False
     if 'graph_name' in dic.keys():
         value = _graph_exists(dic['graph_name'])
@@ -91,13 +94,13 @@ def get_obj_type_from_type_map(type_map: Dict[str, str], obj_dic: Dict):
     return next(v for k, v in type_map.items() if k in obj_dic.keys())
 
 
-def subscriber(subscriber_map: Dict,  grouped_observable: GroupedObservable):
+def subscriber(subscriber_map: Dict, grouped_observable: GroupedObservable):
     subject = subscriber_map.get(grouped_observable.key)
     if subject:
         grouped_observable.subscribe(subject)
 
 
-def general_edge_grouper( observable: rx.Observable):
+def general_edge_grouper(observable: rx.Observable):
     return observable.pipe(
         op.map(lambda dic: raw_edge_dict_to_formatted_edge_dict(dic)),
         op.reduce(lambda acc, act: reduce_edge_dict(acc, act)),
@@ -123,15 +126,20 @@ async def await_futures(tasks: List):
     return await asyncio.gather(*tasks)
 
 
-with open("/users/jhernandez/Documents/planningArticle/resources/my_data.json") as f:
+with open("/users/jhernandez/Documents/planningArticle/resources/my_data.json"
+          ) as f:
     credentials = json.load(f)
 loop = asyncio.get_event_loop()
 conn = mongo_connection(credentials, loop)
 _graph_exists = graph_exists(conn)
 get_db = partial(_get_db_to_insert, conn)
 save_dict_in_db = partial(save_one_item, get_db)
-save_edges_in_db = partial(save_many_items, conn.get_database("planning").get_collection("edges2"))
-save_nodes_in_db = partial(save_many_items, conn.get_database("planning").get_collection("nodes2"))
+save_edges_in_db = partial(
+    save_many_items,
+    conn.get_database("planning").get_collection("edges2"))
+save_nodes_in_db = partial(
+    save_many_items,
+    conn.get_database("planning").get_collection("nodes2"))
 
 graph_type_map = {"source": "edge", "node_name": "node", "name": "graph"}
 get_dict_type = partial(get_obj_type_from_type_map, graph_type_map)
@@ -142,35 +150,33 @@ processed_edges = edge_subject.pipe(
     op.filter(lambda edge_dic: not exists(edge_dic)),
     op.group_by(lambda dic: "".join(
         [str(v) for k, v in dic.items() if k not in ['level', 'type']])),
-    op.map(lambda o: general_edge_grouper(o)),
-    op.merge_all(),
+    op.map(lambda o: general_edge_grouper(o)), op.merge_all(),
     op.buffer_with_count(100),
     op.map(lambda dict_list: save_edges_in_db(dict_list)),
-    op.buffer_with_count(5),
-    op.map(lambda futures: perform_futures(futures)),
-    op.map(lambda results: [r.inserted_ids for r in results])
-).subscribe(print_normal)
+    op.buffer_with_count(5), op.map(lambda futures: perform_futures(futures)),
+    op.map(lambda results: [r.inserted_ids for r in results])).subscribe(
+        print_normal)
 
 processed_nodes = node_subject.pipe(
     op.filter(lambda node_dic: not exists(node_dic)),
     op.group_by(lambda dic: "".join(
         [str(v) for k, v in dic.items() if k not in ['level']])),
-    op.map(lambda o: general_node_grouper(o)),
-    op.merge_all(),
+    op.map(lambda o: general_node_grouper(o)), op.merge_all(),
     op.buffer_with_count(600),
     op.map(lambda dict_list: save_nodes_in_db(dict_list)),
-    op.buffer_with_count(5),
-    op.map(lambda futures: perform_futures(futures)),
-    op.map(lambda results: [r.inserted_ids for r in results])
-).subscribe(print_normal)
+    op.buffer_with_count(5), op.map(lambda futures: perform_futures(futures)),
+    op.map(lambda results: [r.inserted_ids for r in results])).subscribe(
+        print_normal)
 
-graph_subject.pipe(
-    op.filter(lambda graph_dic: not exists(graph_dic)),
-).subscribe(print_normal)
+graph_subject.pipe(op.filter(lambda graph_dic: not exists(graph_dic)),
+                   ).subscribe(print_normal)
 
-subscribe_map = {"edge": edge_subject, "node": node_subject, "graph": graph_subject}
+subscribe_map = {
+    "edge": edge_subject,
+    "node": node_subject,
+    "graph": graph_subject
+}
 local_subscriber = partial(subscriber, subscribe_map)
-
 
 base_obs = rx.from_(open("streamTest.txt"))
 # base_obs = rx.from_(sys.stdin)
@@ -178,10 +184,8 @@ base_obs = rx.from_(open("streamTest.txt"))
 c = ConnectableObservable(base_obs, Subject())
 dict_delimiter_subject = Subject()
 ti = time.time()
-c.pipe(
-    op.filter(lambda line: '}' in line or '{' in line),
-    op.map(lambda line: True)
-).subscribe(dict_delimiter_subject)
+c.pipe(op.filter(lambda line: '}' in line or '{' in line),
+       op.map(lambda line: True)).subscribe(dict_delimiter_subject)
 
 c.pipe(
     op.buffer(dict_delimiter_subject),
@@ -195,8 +199,6 @@ c.pipe(
     op.group_by(lambda dic: get_dict_type(dic)),
 ).subscribe(local_subscriber)
 
-
 print("Start stream time: {}".format(str(time.time() - ti)))
 c.connect()
 print("Finish time: {}".format(str(time.time() - ti)))
-

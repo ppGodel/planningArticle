@@ -20,7 +20,7 @@ def graph_exists(db_conn: aiomongo.client) -> Callable[[str], bool]:
         db_to_query = db_conn.get_database("planning").get_collection("graphs2")
         return await db_to_query.find_one({'name': graph_name})
 
-    @lru_cache(maxsize=1000)
+    @lru_cache(maxsize=1024)
     def _graph_exists(graph_name: str) -> bool:
         loop = asyncio.get_event_loop()
         res = loop.run_until_complete(_check_in_db(graph_name))
