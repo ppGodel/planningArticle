@@ -7,7 +7,7 @@ import rx
 from rx import operators as op
 from rx.core import GroupedObservable
 from rx.core.observable.connectableobservable import ConnectableObservable
-from rx.subjects.subject import Subject
+from rx.subject import Subject
 import json
 from mongo_conn import mongo_connection, save_one_item, _get_db_to_insert, \
     graph_exists, save_many_items
@@ -39,23 +39,23 @@ def reduce_node_dict(acc: Dict[str, Set], act: Dict[str,
         acc, {'level': lambda acc_level: acc_level | act.get('level', {})})
 
 
-def node_dict_to_edge_dict_with_list(act: Dict) -> Dict:
+def edge_dict_to_edge_dict_with_list(act: Dict) -> Dict:
     return modify_dict(
         act,
         {'level': lambda lvls: {k: sorted(list(v))
                                 for k, v in lvls.items()}})
 
 
-def edge_dict_to_node_dict_with_list(act: Dict) -> Dict:
+def node_dict_to_node_dict_with_list(act: Dict) -> Dict:
     return modify_dict(act, {'level': lambda v: sorted(list(v))})
 
 
 def dict_to_dict_with_set(act: Dict) -> Dict:
-    return modify_dict(act, {'level': lambda v: set(v)})
+    return modify_dict(act, {'level': lambda v: {v}})
 
 
 def raw_node_dict_to_formatted_node_dict(dic: Dict):
-    return merge_dict(dic, {'level': {}}, lambda x: next(x))
+    return merge_dict(dic, {'level': {}}, lambda x: next(iter(x)))
 
 
 # TODO: Cambiar a dict comprehention types and levels
@@ -63,7 +63,7 @@ def raw_edge_dict_to_formatted_edge_dict(dic: Dict[str, Any]):
     return merge_dict(
         del_keys(dic, {'level', 'type'}),
         {'level': {
-            dic.get('type', ''): set(dict.get('level', []))
+            dic.get('type', ''): dic.get('level', {})
         }})
 
 
@@ -131,7 +131,7 @@ def save_one_graph_in_db(dic: Dict):
     pool.run_until_complete(save_graph_in_db(dic))
 
 
-pass_path = "~/Documents/planningArticle/resources/my_data.json"
+pass_path = "./resources/my_data.json"
 
 with open(pass_path) as f:
     credentials = json.load(f)
@@ -156,7 +156,7 @@ get_dict_type = partial(get_obj_type_from_type_map, graph_type_map)
 
 edge_subject, node_subject, graph_subject = Subject(), Subject(), Subject()
 
-processed_edges = edge_subject.pipe(
+edge_subject.pipe(
     op.filter(lambda edge_dic: not exists(edge_dic)),
     op.group_by(lambda dic: "".join(
         [str(v) for k, v in dic.items() if k not in ['level', 'type']])),
@@ -164,9 +164,10 @@ processed_edges = edge_subject.pipe(
     op.buffer_with_count(1000),
     op.map(lambda dict_list: save_edges_in_db(dict_list)),
     op.buffer_with_count(5), op.map(lambda futures: perform_futures(futures)),
-    op.map(lambda results: [r.inserted_ids for r in results])).subscribe(dumb)
+    op.map(lambda results: [r.inserted_ids for r in results])
+).subscribe(print)
 
-processed_nodes = node_subject.pipe(
+node_subject.pipe(
     op.filter(lambda node_dic: not exists(node_dic)),
     op.group_by(lambda dic: "".join(
         [str(v) for k, v in dic.items() if k not in ['level']])),
@@ -174,7 +175,8 @@ processed_nodes = node_subject.pipe(
     op.buffer_with_count(5000),
     op.map(lambda dict_list: save_nodes_in_db(dict_list)),
     op.buffer_with_count(5), op.map(lambda futures: perform_futures(futures)),
-    op.map(lambda results: [r.inserted_ids for r in results])).subscribe(dumb)
+    op.map(lambda results: [r.inserted_ids for r in results])
+).subscribe(print)
 
 graph_subject.pipe(op.filter(lambda graph_dic: not exists(graph_dic)),
                    ).subscribe(save_one_graph_in_db)
@@ -186,8 +188,8 @@ subscribe_map = {
 }
 local_subscriber = partial(subscriber, subscribe_map)
 
-# base_obs = rx.from_(open("streamTest.txt"))
-base_obs = rx.from_(sys.stdin)
+base_obs = rx.from_(open("streamTest.txt"))
+# base_obs = rx.from_(sys.stdin)
 
 c = ConnectableObservable(base_obs, Subject())
 dict_delimiter_subject = Subject()
@@ -203,7 +205,7 @@ c.pipe(
     op.map(lambda line: "{}{}".format(line, "}")),
     op.map(lambda json_str: json.loads(json_str)),
     op.map(lambda dic: dict_to_dict_with_set(dic)),
-    # op.take(20),
+    # op.take(5),
     op.group_by(lambda dic: get_dict_type(dic)),
 ).subscribe(local_subscriber)
 
